@@ -1,95 +1,210 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+'use client'
+import { useState, useEffect } from 'react';
+import { firestore } from '@/firebase';
+import { query, collection, getDocs, doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { Modal, Box, Typography, Button, Stack, TextField } from '@mui/material';
 
 export default function Home() {
+  const [inventory, setInventory] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [itemName, setItemName] = useState('');
+  
+  // Fetch inventory data from Firestore
+  const updateInventory = async () => {
+    try {
+      const snapshot = query(collection(firestore, 'inventory'));
+      const docs = await getDocs(snapshot);
+      
+      const inventoryList = [];
+      docs.forEach((doc) => {
+        const data = doc.data();
+        if (data.quantity && typeof data.quantity === 'number' && data.quantity > 0) {
+          inventoryList.push({
+            name: doc.id,
+            quantity: data.quantity,
+          });
+        }
+      });
+
+      setInventory(inventoryList);
+    } catch (error) {
+      console.error('Error fetching inventory:', error);
+    }
+  };
+
+  // Add or update an item in the inventory
+  const addItem = async () => {
+    if (!itemName) {
+      console.warn('Item name is required');
+      return;
+    }
+
+    try {
+      const docRef = doc(collection(firestore, 'inventory'), itemName);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        const { quantity } = docSnap.data();
+        await setDoc(docRef, { quantity: (quantity || 0) + 1 });
+      } else {
+        await setDoc(docRef, { quantity: 1 });
+      }
+      
+      await updateInventory();
+      handleClose();
+    } catch (error) {
+      console.error('Error adding item:', error);
+    }
+  };
+
+  // Remove an item from the inventory
+  const removeItem = async (item) => {
+    try {
+      const docRef = doc(collection(firestore, 'inventory'), item);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        const { quantity } = docSnap.data();
+        if (quantity === 1) {
+          await deleteDoc(docRef);
+        } else if (quantity > 1) {
+          await setDoc(docRef, { quantity: quantity - 1 });
+        }
+      }
+
+      await updateInventory();
+    } catch (error) {
+      console.error('Error removing item:', error);
+    }
+  };
+
+  // Increase quantity of an item
+  const incrementItem = async (item) => {
+    try {
+      const docRef = doc(collection(firestore, 'inventory'), item);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        const { quantity } = docSnap.data();
+        await setDoc(docRef, { quantity: (quantity || 0) + 1 });
+      }
+      
+      await updateInventory();
+    } catch (error) {
+      console.error('Error incrementing item:', error);
+    }
+  };
+
+  useEffect(() => {
+    updateInventory();
+  }, []);
+
+  const handleOpen = () => setOpen(true);
+  const handleClose = () => setOpen(false);
+
   return (
-    <main className={styles.main}>
-      <div className={styles.description}>
-        <p>
-          Get started by editing&nbsp;
-          <code className={styles.code}>app/page.js</code>
-        </p>
-        <div>
-          <a
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            By{" "}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className={styles.vercelLogo}
-              width={100}
-              height={24}
-              priority
+    <Box
+      width="100vw"
+      height="100vh"
+      display="flex"
+      justifyContent="center"
+      alignItems="center"
+      flexDirection="column"
+      gap={2}
+      p={2}
+    >
+      {/* Modal for adding items */}
+      <Modal open={open} onClose={handleClose}>
+        <Box
+          position="absolute"
+          top="50%"
+          left="50%"
+          width={400}
+          bgcolor="white"
+          border="2px solid #000"
+          boxShadow={24}
+          p={4}
+          display="flex"
+          flexDirection="column"
+          gap={3}
+          sx={{
+            transform: 'translate(-50%, -50%)',
+          }}
+        >
+          <Typography variant="h6">Add Item</Typography>
+          <Stack width="100%" spacing={2}>
+            <TextField
+              label="Item Name"
+              variant="outlined"
+              value={itemName}
+              onChange={(e) => setItemName(e.target.value)}
             />
-          </a>
-        </div>
-      </div>
+            <Button variant="contained" onClick={addItem}>Add Item</Button>
+            <Button variant="outlined" onClick={handleClose}>Cancel</Button>
+          </Stack>
+        </Box>
+      </Modal>
 
-      <div className={styles.center}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
-      </div>
-
-      <div className={styles.grid}>
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className={styles.card}
-          target="_blank"
-          rel="noopener noreferrer"
+      <Typography variant="h1">Inventory Management</Typography>
+      <Button variant="contained" onClick={handleOpen}>Add New Item</Button>
+      
+      {/* Only display inventory table if there are items */}
+      {inventory.length > 0 ? (
+        <Box
+          width="100%"
+          maxWidth="800px"
+          mt={4}
+          p={2}
+          border="1px solid #ddd"
+          borderRadius={2}
         >
-          <h2>
-            Docs <span>-&gt;</span>
-          </h2>
-          <p>Find in-depth information about Next.js features and API.</p>
-        </a>
-
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className={styles.card}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2>
-            Learn <span>-&gt;</span>
-          </h2>
-          <p>Learn about Next.js in an interactive course with&nbsp;quizzes!</p>
-        </a>
-
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className={styles.card}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2>
-            Templates <span>-&gt;</span>
-          </h2>
-          <p>Explore starter templates for Next.js.</p>
-        </a>
-
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className={styles.card}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2>
-            Deploy <span>-&gt;</span>
-          </h2>
-          <p>
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
-    </main>
+          <Typography variant="h2" mb={2}>Inventory Items</Typography>
+          <Box
+            display="grid"
+            gridTemplateColumns="1fr 1fr 1fr 1fr"
+            gap={2}
+            borderBottom="1px solid #ddd"
+            pb={1}
+            mb={2}
+          >
+            <Typography variant="h6" fontWeight="bold">Item</Typography>
+            <Typography variant="h6" fontWeight="bold">Quantity</Typography>
+            <Typography variant="h6" fontWeight="bold">Actions</Typography>
+          </Box>
+          {inventory.map((item) => (
+            <Box
+              key={item.name}
+              display="grid"
+              gridTemplateColumns="1fr 1fr 1fr 1fr"
+              gap={2}
+              alignItems="center"
+              p={1}
+              borderBottom="1px solid #ddd"
+            >
+              <Typography variant="body1">{item.name.charAt(0).toUpperCase() + item.name.slice(1)}</Typography>
+              <Typography variant="body1">{item.quantity}</Typography>
+              <Stack direction="row" spacing={1}>
+                <Button 
+                  variant="outlined" 
+                  color="success"
+                  onClick={() => incrementItem(item.name)}
+                >
+                  Add
+                </Button>
+                <Button 
+                  variant="outlined" 
+                  color="error"
+                  onClick={() => removeItem(item.name)}
+                >
+                  Remove
+                </Button>
+              </Stack>
+            </Box>
+          ))}
+        </Box>
+      ) : (
+        <Typography variant="h6" mt={2}>No items in inventory</Typography>
+      )}
+    </Box>
   );
 }
